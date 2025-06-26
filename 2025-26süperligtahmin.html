@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Süper Lig 2025-26 Sıralama Tahmini</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f0f0f0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            touch-action: manipulation;
+        }
+        .container {
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            width: 90%;
+            max-width: 600px;
+            margin: 20px;
+        }
+        h1, h2 {
+            text-align: center;
+            color: #333;
+        }
+        input, button {
+            padding: 10px;
+            margin: 10px 0;
+            width: 100%;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+            font-size: 16px;
+        }
+        button {
+            background-color: #28a745;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #218838;
+        }
+        .team-list {
+            list-style: none;
+            padding: 0;
+        }
+        .team-item {
+            padding: 10px;
+            margin: 5px 0;
+            background-color: #f9f9f9;
+            border: 1px solid #ddd;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: move;
+        }
+        .team-item.dragging {
+            opacity: 0.5;
+        }
+        #predictions, #admin-predictions {
+            margin-top: 20px;
+        }
+        .prediction-item {
+            padding: 10px;
+            margin: 5px 0;
+            background-color: #e9ecef;
+            border-radius: 5px;
+        }
+        #error {
+            color: red;
+            text-align: center;
+            display: none;
+        }
+        #admin-section {
+            display: none;
+            margin-top: 20px;
+        }
+        @media (max-width: 600px) {
+            .container {
+                width: 95%;
+                padding: 15px;
+            }
+            input, button {
+                font-size: 14px;
+            }
+            .team-item {
+                font-size: 14px;
+                padding: 8px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Süper Lig 2025-26 Sıralama Tahmini</h1>
+        <input type="text" id="username" placeholder="Adınızı girin" required>
+        <h2>Takımları Sırala</h2>
+        <div id="error">Takımlar yüklenirken bir hata oluştu!</div>
+        <ul id="team-list" class="team-list"></ul>
+        <button onclick="savePrediction()">Tahmini Kaydet</button>
+        <h2>Senin Tahminin</h2>
+        <div id="predictions"></div>
+        <h2>Yönetici Girişi</h2>
+        <input type="password" id="admin-password" placeholder="Yönetici şifresini girin">
+        <button onclick="showAdminPredictions()">Tüm Tahminleri Gör</button>
+        <div id="admin-section">
+            <h2>Tüm Tahminler (Yönetici)</h2>
+            <div id="admin-predictions"></div>
+        </div>
+    </div>
+
+    <script>
+        const teams = [
+            "Galatasaray", "Fenerbahçe", "Trabzonspor", "Başakşehir", "Göztepe", 
+            "Samsunspor", "Antalyaspor", "Alanyaspor", "Kayserispor", "Konyaspor", 
+            "Çaykur Rizespor", "Kasımpaşa", "Beşiktaş", "Eyüpspor", "Gaziantep FK", 
+            "Kocaelispor", "Gençlerbirliği", "Fatih Karagümrük"
+        ];
+
+        const ADMIN_PASSWORD = "admin123"; // Yönetici şifresi
+
+        // Takım listesini oluştur
+        const teamList = document.getElementById('team-list');
+        const errorDiv = document.getElementById('error');
+
+        function loadTeams() {
+            try {
+                teamList.innerHTML = ''; // Liste sıfırlanır
+                if (teams.length === 0) {
+                    throw new Error("Takım listesi boş!");
+                }
+                teams.forEach(team => {
+                    const li = document.createElement('li');
+                    li.className = 'team-item';
+                    li.draggable = true;
+                    li.innerHTML = `
+                        ${team}
+                        <div>
+                            <button onclick="moveTeam(this, -1)">↑</button>
+                            <button onclick="moveTeam(this, 1)">↓</button>
+                        </div>
+                    `;
+                    teamList.appendChild(li);
+                });
+                errorDiv.style.display = 'none';
+            } catch (error) {
+                console.error("Hata:", error);
+                errorDiv.style.display = 'block';
+            }
+        }
+
+        // Sayfa yüklendiğinde takımları yükle
+        window.onload = () => {
+            loadTeams();
+            displayUserPredictions();
+        };
+
+        // Sürükle-bırak işlevselliği
+        teamList.addEventListener('dragstart', e => {
+            if (e.target.classList.contains('team-item')) {
+                e.target.classList.add('dragging');
+            }
+        });
+        teamList.addEventListener('dragend', e => {
+            e.target.classList.remove('dragging');
+        });
+        teamList.addEventListener('dragover', e => {
+            e.preventDefault();
+            const dragging = document.querySelector('.dragging');
+            const afterElement = getDragAfterElement(teamList, e.clientY);
+            if (afterElement == null) {
+                teamList.appendChild(dragging);
+            } else {
+                teamList.insertBefore(dragging, afterElement);
+            }
+        });
+
+        function getDragAfterElement(container, y) {
+            const draggableElements = [...container.querySelectorAll('.team-item:not(.dragging)')];
+            return draggableElements.reduce((closest, child) => {
+                const box = child.getBoundingClientRect();
+                const offset = y - box.top - box.height / 2;
+                if (offset < 0 && offset > closest.offset) {
+                    return { offset: offset, element: child };
+                } else {
+                    return closest;
+                }
+            }, { offset: Number.NEGATIVE_INFINITY }).element;
+        }
+
+        // Yukarı/aşağı butonları için hareket fonksiyonu
+        function moveTeam(button, direction) {
+            const li = button.parentElement.parentElement;
+            const index = [...teamList.children].indexOf(li);
+            const newIndex = index + direction;
+            if (newIndex >= 0 && newIndex < teamList.children.length) {
+                if (direction === -1) {
+                    teamList.insertBefore(li, teamList.children[newIndex]);
+                } else {
+                    teamList.insertBefore(li, teamList.children[newIndex + 1] || null);
+                }
+            }
+        }
+
+        // Tahmin kaydetme
+        function savePrediction() {
+            const username = document.getElementById('username').value.trim();
+            if (!username) {
+                alert('Lütfen adınızı girin!');
+                return;
+            }
+            const orderedTeams = [...teamList.children].map(li => li.textContent.trim().split('↑↓')[0].trim());
+            if (orderedTeams.length !== teams.length) {
+                alert('Takım listesi eksik! Sayfayı yenileyin.');
+                return;
+            }
+
+            // Kullanıcının kendi tahmini için sessionStorage
+            const userPrediction = { username, teams: orderedTeams, date: new Date().toLocaleString('tr-TR') };
+            sessionStorage.setItem('userPrediction', JSON.stringify(userPrediction));
+
+            // Yönetici için tüm tahminleri localStorage'a kaydet
+            const predictions = JSON.parse(localStorage.getItem('predictions') || '[]');
+            predictions.push(userPrediction);
+            localStorage.setItem('predictions', JSON.stringify(predictions));
+
+            displayUserPredictions();
+            alert('Tahmininiz kaydedildi!');
+        }
+
+        // Kullanıcının kendi tahminini görüntüleme
+        function displayUserPredictions() {
+            const predictionsDiv = document.getElementById('predictions');
+            const userPrediction = JSON.parse(sessionStorage.getItem('userPrediction') || 'null');
+            predictionsDiv.innerHTML = '';
+            if (userPrediction) {
+                const div = document.createElement('div');
+                div.className = 'prediction-item';
+                div.innerHTML = `
+                    <strong>${userPrediction.username}</strong> (${userPrediction.date})<br>
+                    ${userPrediction.teams.map((team, i) => `${i + 1}. ${team}`).join('<br>')}
+                `;
+                predictionsDiv.appendChild(div);
+            } else {
+                predictionsDiv.innerHTML = '<p>Henüz tahmin yapmadınız.</p>';
+            }
+        }
+
+        // Yönetici tahminlerini görüntüleme
+        function showAdminPredictions() {
+            const password = document.getElementById('admin-password').value;
+            const adminSection = document.getElementById('admin-section');
+            const adminPredictionsDiv = document.getElementById('admin-predictions');
+
+            if (password === ADMIN_PASSWORD) {
+                adminSection.style.display = 'block';
+                const predictions = JSON.parse(localStorage.getItem('predictions') || '[]');
+                adminPredictionsDiv.innerHTML = '';
+                if (predictions.length === 0) {
+                    adminPredictionsDiv.innerHTML = '<p>Henüz tahmin yok.</p>';
+                } else {
+                    predictions.forEach(prediction => {
+                        const div = document.createElement('div');
+                        div.className = 'prediction-item';
+                        div.innerHTML = `
+                            <strong>${prediction.username}</strong> (${prediction.date})<br>
+                            ${prediction.teams.map((team, i) => `${i + 1}. ${team}`).join('<br>')}
+                        `;
+                        adminPredictionsDiv.appendChild(div);
+                    });
+                }
+            } else {
+                alert('Hatalı şifre!');
+                adminSection.style.display = 'none';
+            }
+        }
+    </script>
+</body>
+</html>
