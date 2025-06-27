@@ -46,11 +46,37 @@
         button:hover {
             background-color: #218838;
         }
-        .team-list {
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        .team-buttons {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            justify-content: center;
+        }
+        .team-button {
+            padding: 8px 16px;
+            font-size: 14px;
+            border-radius: 5px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+        .team-button:hover {
+            background-color: #0056b3;
+        }
+        .team-button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        .ranked-list {
             list-style: none;
             padding: 0;
         }
-        .team-item {
+        .ranked-item {
             padding: 10px;
             margin: 5px 0;
             background-color: #f9f9f9;
@@ -58,10 +84,6 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            cursor: move;
-        }
-        .team-item.dragging {
-            opacity: 0.5;
         }
         #predictions, #admin-predictions {
             margin-top: 20px;
@@ -86,10 +108,11 @@
                 width: 95%;
                 padding: 15px;
             }
-            input, button {
+            input, button, .team-button {
                 font-size: 14px;
+                padding: 8px;
             }
-            .team-item {
+            .ranked-item {
                 font-size: 14px;
                 padding: 8px;
             }
@@ -102,8 +125,11 @@
         <input type="text" id="username" placeholder="Adınızı girin" required>
         <h2>Takımları Sırala</h2>
         <div id="error">Takımlar yüklenirken bir hata oluştu!</div>
-        <ul id="team-list" class="team-list"></ul>
-        <button onclick="savePrediction()">Tahmini Kaydet</button>
+        <p>Mevcut Sıralama (<span id="current-rank">0</span>/18):</p>
+        <ul id="ranked-list" class="ranked-list"></ul>
+        <h3>Takımı Seç</h3>
+        <div id="team-buttons" class="team-buttons"></div>
+        <button id="save-btn" onclick="savePrediction()" disabled>Tahmini Kaydet</button>
         <h2>Senin Tahminin</h2>
         <div id="predictions"></div>
         <h2>Yönetici Girişi</h2>
@@ -123,90 +149,82 @@
             "Kocaelispor", "Gençlerbirliği", "Fatih Karagümrük"
         ];
 
-        const ADMIN_PASSWORD = "admin123"; // Yönetici şifresi
+        const ADMIN_PASSWORD = "admin123";
+        let availableTeams = [...teams];
+        let rankedTeams = [];
 
-        // Takım listesini oluştur
-        const teamList = document.getElementById('team-list');
+        const teamButtons = document.getElementById('team-buttons');
+        const rankedList = document.getElementById('ranked-list');
         const errorDiv = document.getElementById('error');
+        const saveBtn = document.getElementById('save-btn');
+        const currentRankSpan = document.getElementById('current-rank');
 
+        // Takım butonlarını oluştur
         function loadTeams() {
             try {
-                teamList.innerHTML = ''; // Liste sıfırlanır
+                teamButtons.innerHTML = '';
                 if (teams.length === 0) {
                     throw new Error("Takım listesi boş!");
                 }
-                teams.forEach(team => {
-                    const li = document.createElement('li');
-                    li.className = 'team-item';
-                    li.draggable = true;
-                    li.innerHTML = `
-                        ${team}
-                        <div>
-                            <button onclick="moveTeam(this, -1)">↑</button>
-                            <button onclick="moveTeam(this, 1)">↓</button>
-                        </div>
-                    `;
-                    teamList.appendChild(li);
+                availableTeams.forEach(team => {
+                    const button = document.createElement('button');
+                    button.className = 'team-button';
+                    button.textContent = team;
+                    button.onclick = () => selectTeam(team);
+                    teamButtons.appendChild(button);
                 });
                 errorDiv.style.display = 'none';
+                updateRankedList();
             } catch (error) {
                 console.error("Hata:", error);
                 errorDiv.style.display = 'block';
             }
         }
 
-        // Sayfa yüklendiğinde takımları yükle
-        window.onload = () => {
+        // Takım seçme
+        function selectTeam(team) {
+            if (rankedTeams.length < 18) {
+                rankedTeams.push(team);
+                availableTeams = availableTeams.filter(t => t !== team);
+                updateRankedList();
+                loadTeams();
+                checkRankingCompletion();
+            }
+        }
+
+        // Sıralı listeyi güncelle
+        function updateRankedList() {
+            rankedList.innerHTML = '';
+            rankedTeams.forEach((team, index) => {
+                const li = document.createElement('li');
+                li.className = 'ranked-item';
+                li.innerHTML = `${index + 1}. ${team} <button onclick="removeTeam(${index})">Kaldır</button>`;
+                rankedList.appendChild(li);
+            });
+            currentRankSpan.textContent = rankedTeams.length;
+        }
+
+        // Takımı listeden kaldır
+        function removeTeam(index) {
+            const team = rankedTeams.splice(index, 1)[0];
+            availableTeams.push(team);
             loadTeams();
-            displayUserPredictions();
+            updateRankedList();
+            checkRankingCompletion();
+        }
+
+        // Sıralama tamamlandı mı kontrol et
+        function checkRankingCompletion() {
+            saveBtn.disabled = rankedTeams.length !== 18;
+        }
+
+        // Çıkış engelleme
+        window.onbeforeunload = function() {
+            if (rankedTeams.length > 0 && rankedTeams.length < 18) {
+                return "Sıralama tamamlanmadı! Çıkmak istediğinizden emin misiniz?";
+            }
+            return null;
         };
-
-        // Sürükle-bırak işlevselliği
-        teamList.addEventListener('dragstart', e => {
-            if (e.target.classList.contains('team-item')) {
-                e.target.classList.add('dragging');
-            }
-        });
-        teamList.addEventListener('dragend', e => {
-            e.target.classList.remove('dragging');
-        });
-        teamList.addEventListener('dragover', e => {
-            e.preventDefault();
-            const dragging = document.querySelector('.dragging');
-            const afterElement = getDragAfterElement(teamList, e.clientY);
-            if (afterElement == null) {
-                teamList.appendChild(dragging);
-            } else {
-                teamList.insertBefore(dragging, afterElement);
-            }
-        });
-
-        function getDragAfterElement(container, y) {
-            const draggableElements = [...container.querySelectorAll('.team-item:not(.dragging)')];
-            return draggableElements.reduce((closest, child) => {
-                const box = child.getBoundingClientRect();
-                const offset = y - box.top - box.height / 2;
-                if (offset < 0 && offset > closest.offset) {
-                    return { offset: offset, element: child };
-                } else {
-                    return closest;
-                }
-            }, { offset: Number.NEGATIVE_INFINITY }).element;
-        }
-
-        // Yukarı/aşağı butonları için hareket fonksiyonu
-        function moveTeam(button, direction) {
-            const li = button.parentElement.parentElement;
-            const index = [...teamList.children].indexOf(li);
-            const newIndex = index + direction;
-            if (newIndex >= 0 && newIndex < teamList.children.length) {
-                if (direction === -1) {
-                    teamList.insertBefore(li, teamList.children[newIndex]);
-                } else {
-                    teamList.insertBefore(li, teamList.children[newIndex + 1] || null);
-                }
-            }
-        }
 
         // Tahmin kaydetme
         function savePrediction() {
@@ -215,23 +233,21 @@
                 alert('Lütfen adınızı girin!');
                 return;
             }
-            const orderedTeams = [...teamList.children].map(li => li.textContent.trim().split('↑↓')[0].trim());
-            if (orderedTeams.length !== teams.length) {
-                alert('Takım listesi eksik! Sayfayı yenileyin.');
+            if (rankedTeams.length !== 18) {
+                alert('Lütfen 18 takımı sıralayın!');
                 return;
             }
 
-            // Kullanıcının kendi tahmini için sessionStorage
-            const userPrediction = { username, teams: orderedTeams, date: new Date().toLocaleString('tr-TR') };
+            const userPrediction = { username, teams: rankedTeams, date: new Date().toLocaleString('tr-TR') };
             sessionStorage.setItem('userPrediction', JSON.stringify(userPrediction));
 
-            // Yönetici için tüm tahminleri localStorage'a kaydet
             const predictions = JSON.parse(localStorage.getItem('predictions') || '[]');
             predictions.push(userPrediction);
             localStorage.setItem('predictions', JSON.stringify(predictions));
 
             displayUserPredictions();
             alert('Tahmininiz kaydedildi!');
+            saveBtn.disabled = true;
         }
 
         // Kullanıcının kendi tahminini görüntüleme
@@ -280,6 +296,12 @@
                 adminSection.style.display = 'none';
             }
         }
+
+        // Sayfa yüklendiğinde takımları ve tahminleri yükle
+        window.onload = () => {
+            loadTeams();
+            displayUserPredictions();
+        };
     </script>
 </body>
 </html>
